@@ -1,4 +1,16 @@
 // backend/static/alp_ui.js
+// Enhanced ALP UI event consumer: registers, memory and simple stack visualization.
+// Replaces previous lightweight implementation with live visual updates.
+//
+// Assumptions:
+// - Server POST /assemble returns {"symbols": {...}, ...}
+// - Server POST /simulate returns {"events":[...], "final_state_meta": {"registers": {...}, "memory_size": ...}, "errors": [...] }
+// - Events follow the schema defined in the project and include types:
+//   "instruction", "reg_update", "mem_write", "mem_read", "push", "pop", "branch", "push_frame", "return", "compare"
+//
+// Notes:
+// - The script updates #registerGrid and #memoryBody (existing elements) and uses event log #eventLog.
+// - Simple stack view is implemented from push/pop events (stackList). SP/FP shown in register grid.
 document.addEventListener("DOMContentLoaded", function () {
     const srcArea = document.getElementById("editor");
     const assembleBtn = document.getElementById("assembleBtn");
@@ -7,200 +19,305 @@ document.addEventListener("DOMContentLoaded", function () {
     const symbolsDiv = document.getElementById("symbols");
     const stepBtn = document.getElementById("stepBtn");
     const stepOverBtn = document.getElementById("stepOverBtn");
-    const resetBtn = document.getElementById("resetBtn"); // Ensure reset button is also selected if not already
+    const resetBtn = document.getElementById("resetBtn");
+    const loadSampleBtn = document.getElementById("loadSampleBtn");
+    const registerGrid = document.getElementById("registerGrid");
+    const memoryBody = document.getElementById("memoryBody");
 
+    // runtime state maintained in front-end
     let simulationEvents = [];
     let eventIndex = 0;
+    let registers = {};   // map name -> value
+    let memoryMap = {};   // addr -> value (32-bit)
+    let stackList = [];   // array of {addr, value, what} representing pushes (top at index 0)
+    let lastEventRendered = null;
 
-    function updateButtons() {
-        const hasEvents = simulationEvents.length > 0;
-        const canStep = eventIndex < simulationEvents.length;
-        stepBtn.disabled = !hasEvents || !canStep;
-        stepOverBtn.disabled = !hasEvents || !canStep;
+    function resetFrontendState() {
+        simulationEvents = [];
+        eventIndex = 0;
+        registers = {};
+        memoryMap = {};
+        stackList = [];
+        eventsDiv.innerHTML = "";
+        renderRegisterGrid();
+        renderMemoryTable();
+    }
+
+    // Renderers
+    function renderRegisterGrid() {
+        // registers object may be sparse; show canonical registers order if present
+        const order = ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "SP", "FP", "PC", "FLAGS"];
+        registerGrid.innerHTML = "";
+        for (let r of order) {
+            const val = registers.hasOwnProperty(r) ? registers[r] : "";
+            const el = document.createElement("div");
+            el.className = "register-item";
+            el.innerHTML = `<div class="reg-name">${r}</div><div class="reg-value">${formatRegValue(val)}</div>`;
+            registerGrid.appendChild(el);
+        }
+    }
+
+    function formatRegValue(v) {
+        if (v === null || v === undefined || v === "") return "";
+        // special-case FLAGS object
+        if (typeof v === "object" && v !== null) {
+            try {
+                return JSON.stringify(v);
+            } catch (e) {
+                return String(v);
+            }
+        }
+        // show hex and decimal
+        const num = Number(v) >>> 0; // treat as unsigned 32-bit
+        return `0x${num.toString(16).padStart(8, "0")} (${num})`;
+    }
+
+    function renderMemoryTable() {
+        // Show written memory addresses sorted descending (higher addresses first)
+        memoryBody.innerHTML = "";
+        const addrs = Object.keys(memoryMap).map(a => parseInt(a, 10)).sort((a, b) => b - a);
+        // If no memoryMap entries, show a placeholder
+        if (addrs.length === 0) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td colspan="3" style="opacity:0.6;">(no memory writes yet)</td>`;
+            memoryBody.appendChild(tr);
+            return;
+        }
+        for (let addr of addrs) {
+            const v = memoryMap[addr];
+            const hex = "0x" + ((v >>> 0).toString(16).padStart(8, "0")).toUpperCase();
+            const dec = (v >>> 0);
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${addr}</td><td>${hex}</td><td>${dec}</td>`;
+            memoryBody.appendChild(tr);
+        }
     }
 
     function renderEvent(evt) {
-        const p = document.createElement("pre");
-        // Simple formatting
-        let info = "";
-        if (evt.type === "instruction") info = `${evt.data.mnemonic} ${evt.data.operands ? JSON.stringify(evt.data.operands) : ""}`;
-        else if (evt.type === "reg_update") info = `${evt.data.reg} <- ${evt.data.new}`;
-        else if (evt.type === "mem_write") info = `[${evt.data.addr}] <- ${evt.data.value}`;
-        else if (evt.type === "push") info = `PUSH ${evt.data.value} -> [${evt.data.addr}]`;
-        else if (evt.type === "pop") info = `POP ${evt.data.value} <- [${evt.data.addr}]`;
-        else info = JSON.stringify(evt.data);
-
+        const p = document.createElement("div");
+        p.className = "event-row";
         p.textContent = `[${evt.id}] ${evt.type} ${evt.description}`;
-        p.className = "event-item";
+        // show data as a small JSON blob
+        const pre = document.createElement("pre");
+        pre.className = "event-data";
+        try { pre.textContent = JSON.stringify(evt.data, null, 2); } catch (e) { pre.textContent = String(evt.data); }
+        p.appendChild(pre);
         eventsDiv.appendChild(p);
         eventsDiv.scrollTop = eventsDiv.scrollHeight;
-
-        // Visual updates can go here if we parsed them (e.g. highlight register)
     }
 
+    // Event handling (updates registers/memory/stack)
+    function handleEvent(evt) {
+        // call before rendering so UI reflects new values in same tick
+        const t = evt.type;
+        if (t === "reg_update") {
+            const d = evt.data || {};
+            const r = d.reg;
+            const nv = d.new;
+            registers[r] = nv;
+            // if SP/FP changed we want to reflect that and adjust stack visualization
+            if (r === "SP") {
+                // SP change does not itself reveal pushed value; we track pushes/pops separately from push/pop events
+                // but we still update the display
+            }
+            renderRegisterGrid();
+        } else if (t === "mem_write" || t === "mem_read") {
+            const d = evt.data || {};
+            const a = d.addr;
+            const v = d.value;
+            if (typeof a === "number") {
+                memoryMap[a] = v >>> 0;
+                renderMemoryTable();
+            }
+        } else if (t === "push") {
+            // push contains addr and value and what
+            const d = evt.data || {};
+            const a = d.addr;
+            const v = d.value;
+            const what = d.what || "word";
+            // treat top of stack as index 0
+            stackList.unshift({ addr: a, value: (v >>> 0), what: what });
+            // update memory map too
+            memoryMap[a] = (v >>> 0);
+            renderMemoryTable();
+            renderStackSnapshot();
+        } else if (t === "pop") {
+            const d = evt.data || {};
+            // popped address shown in event; remove first matching entry from stackList with same addr
+            const a = d.addr;
+            // remove first element matching addr (if exists)
+            const idx = stackList.findIndex(s => s.addr === a);
+            if (idx !== -1) stackList.splice(idx, 1);
+            renderStackSnapshot();
+        } else if (t === "push_frame") {
+            // push_frame event contains start_addr and slots: use as summary
+            // optional: annotate stackList with frame boundary
+            // no-op for now (we rely on push/pop events)
+        } else if (t === "return") {
+            // a return: frames unwinding; handled by pop events as they are emitted
+        }
+        // Render event row too
+        renderEvent(evt);
+    }
+
+    function renderStackSnapshot() {
+        // We'll show a small inline view inside the memory table as first rows (optional).
+        // Simpler: append a small summary row at top of memory table to show top 8 stack entries (addresses & values)
+        // Clear any stack snapshot header rows
+        // For simplicity, add a top "Stack Top" header before the memory list
+        // Implementation: create ephemeral header rows
+        // Remove existing stack snapshot rows if present by checking a class
+        Array.from(memoryBody.querySelectorAll(".stack-snapshot")).forEach(el => el.remove());
+        // Add up to 8 entries
+        const snapshot = stackList.slice(0, 8);
+        if (snapshot.length === 0) return;
+        // create a header row
+        const hdr = document.createElement("tr");
+        hdr.className = "stack-snapshot";
+        hdr.innerHTML = `<td colspan="3" style="background:#222;color:#8ef;border-bottom:1px dashed #444">Stack Top (most recent first)</td>`;
+        memoryBody.insertBefore(hdr, memoryBody.firstChild);
+        for (let s of snapshot) {
+            const row = document.createElement("tr");
+            row.className = "stack-snapshot";
+            const hex = "0x" + ((s.value >>> 0).toString(16).padStart(8, "0")).toUpperCase();
+            row.innerHTML = `<td>${s.addr}</td><td>${hex}</td><td>${s.value >>> 0}</td>`;
+            memoryBody.insertBefore(row, memoryBody.firstChild.nextSibling);
+        }
+    }
+
+    // Step / step over helpers
+    function hasMoreEvents() { return eventIndex < simulationEvents.length; }
+
+    function stepOnce() {
+        if (!hasMoreEvents()) return;
+        const evt = simulationEvents[eventIndex++];
+        handleEvent(evt);
+    }
+
+    function stepOver() {
+        // If next instruction is a CALL (we will inspect upcoming events),
+        // advance events until and including the matching 'return' event.
+        if (!hasMoreEvents()) return;
+        const next = simulationEvents[eventIndex];
+        if (next && next.type === "instruction" && next.description && next.description.indexOf("CALL") >= 0) {
+            // advance until we see a 'return' event (naive matching)
+            let depth = 0;
+            while (eventIndex < simulationEvents.length) {
+                const e = simulationEvents[eventIndex++];
+                handleEvent(e);
+                if (e.type === "push_frame") depth++;
+                if (e.type === "return") {
+                    if (depth <= 0) break;
+                    depth--;
+                }
+                // safety: break if too many
+            }
+            return;
+        }
+        // otherwise just one step
+        stepOnce();
+    }
+
+    // Wire up buttons
     assembleBtn.addEventListener("click", async () => {
         const source = srcArea.value;
-        const res = await fetch("/assemble", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source }) });
+        const res = await fetch("/assemble", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source })
+        });
         const j = await res.json();
-        symbolsDiv.innerText = JSON.stringify(j.symbols, null, 2);
+        symbolsDiv.innerText = JSON.stringify(j.symbols || {}, null, 2);
         if (j.errors && j.errors.length) alert("Assemble errors:\n" + j.errors.join("\n"));
-        else {
-            runBtn.disabled = false;
-        }
+        // Reset frontend state on a successful assemble to avoid stale events
+        resetFrontendState();
     });
 
     runBtn.addEventListener("click", async () => {
         eventsDiv.innerHTML = "";
-        simulationEvents = [];
-        eventIndex = 0;
-        updateButtons();
-
+        resetFrontendState();
         const source = srcArea.value;
-        // Request a large step limit to get full stream
-        const res = await fetch("/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, run_opts: { step_limit: 100000 } }) });
+        const res = await fetch("/simulate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source })
+        });
         const j = await res.json();
-
         if (j.errors && j.errors.length) {
             alert("Runtime errors:\n" + j.errors.join("\n"));
             return;
         }
-
         simulationEvents = j.events || [];
-        if (simulationEvents.length === 0) {
-            eventsDiv.innerHTML = "No events generated.";
-            return;
+        // Initialize registers from final_state snapshot if provided (helps showing initial register values)
+        if (j.final_state_meta && j.final_state_meta.registers) {
+            registers = Object.assign({}, j.final_state_meta.registers);
+            renderRegisterGrid();
         }
-
-        // Check for truncation (if backend supported returning a truncated flag, we'd check it. 
-        // For now, if we hit 100000, we might assume truncation or just not worry)
-        // If the last event ID is high, it likely worked. Be simple.
-
-        // Enable step buttons
-        stepBtn.disabled = false;
-        stepOverBtn.disabled = false;
-
-        // Auto-scroll to top of log
-        eventsDiv.innerHTML = "<em>Simulation loaded. Use Step/Step Over or see below.</em><br/>";
+        // Optionally, we can play all events at once (here we render them sequentially quickly)
+        // For now, we render them all with a small delay to simulate execution; if you prefer immediate dump, remove delay.
+        let i = 0;
+        const pace = 20; // ms per event (fast). Increase for slower playback.
+        function playNext() {
+            if (i >= simulationEvents.length) return;
+            handleEvent(simulationEvents[i++]);
+            setTimeout(playNext, pace);
+        }
+        playNext();
     });
 
     stepBtn.addEventListener("click", () => {
-        if (eventIndex < simulationEvents.length) {
-            renderEvent(simulationEvents[eventIndex]);
-            eventIndex++;
-            updateButtons();
+        // If we don't have events loaded, ask the server to return a short run (max_steps=1)
+        if (simulationEvents.length === 0) {
+            (async () => {
+                const res = await fetch("/simulate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ source: srcArea.value })
+                });
+                const j = await res.json();
+                if (j.errors && j.errors.length) {
+                    alert("Runtime errors:\n" + j.errors.join("\n"));
+                    return;
+                }
+                simulationEvents = j.events || [];
+                eventIndex = 0;
+                stepOnce();
+            })();
+        } else {
+            stepOnce();
         }
     });
 
     stepOverBtn.addEventListener("click", () => {
-        if (eventIndex >= simulationEvents.length) return;
-
-        const startEvt = simulationEvents[eventIndex];
-        // If it is a CALL instruction, we want to step until we return from it.
-        // Heuristic:
-        // 1. If not CALL, just step 1.
-        // 2. If CALL, scan ahead for matching return? 
-        //    Actually, simple heuristic: Count "push_frame" vs "return" or better:
-        //    Since we have a flat event stream, we can just look for the return event that corresponds to this call?
-        //    No, "return" event doesn't link to "call" ID directly in current schema easily without parsing.
-        //    Better heuristic: 
-        //      Depth counter: start=0. 
-        //      Iterate:
-        //        current = events[i]
-        //        if current is CALL (instruction mnemonic CALL), depth++
-        //        if current is RETURN (instruction mnemonic RETURN/RET or type 'return'?), depth--
-        //      Stop when depth == 0 and we are past the start index.
-
-        // Let's refine:
-        // The event stream has "instruction" events and "push_frame"/"return" events.
-        // Only "instruction" events move the PC in a major way we care about for "Step Over" at source level.
-        // BUT "push_frame" happens *inside* the CALL instruction execution usually?
-        // No, `simulate` returns a trace.
-        // Event[i] = instruction CALL
-        // Event[i+1] = push_frame (emitted by CALL)
-        // Event[i+2] = instruction (first instr of callee)
-        // ...
-        // Event[k] = instruction RETURN
-        // Event[k+1] = return (event)
-
-        // So if we are at `instruction` and mnemonic is `CALL`:
-        //   Target depth = 0.
-        //   We are 'into' the call.
-        //   Scan forward.
-        //   Count `push_frame` (depth++) and `return` (depth--).
-        //   Wait, the `CALL` instruction itself emits `push_frame` immediately after.
-        //   So we are at `CALL`.
-        //   Render it.
-        //   Then loop: render next events.
-        //   If we see `push_frame`, depth++.
-        //   If we see `return` event, depth--.
-        //   Stop when depth == 0.
-
-        // Logic:
-        // 1. Render current event.
-        // 2. If it was NOT a CALL instruction, done.
-        // 3. If it WAS a CALL, enter loop:
-        //      While hasNext:
-        //         Peek next event.
-        //         Render it.
-        //         If event.type === 'push_frame', depth++.
-        //         If event.type === 'return', depth--.
-        //         If depth == 0: break.
-
-        // Wait, initial CALL instruction doesn't increase depth? 
-        // The `push_frame` event does.
-        // So:
-        //   Execute current event (the CALL instruction). 
-        //   (It might trigger a push_frame next? No, simulate returns linear list).
-        //   Yes, `CALL` emits `push_frame`.
-        //   So after rendering CALL instruction (evt i), the next event (i+1) is `push_frame`?
-        //   Let's check engine.
-        //   Engine `CALL`: emit "push_frame", then done. 
-        //   Next instruction event is the target.
-        //   So: 
-        //   Evt[0]: Instruction CALL
-        //   Evt[1]: push_frame
-        //   Evt[2]: Instruction (callee start)
-
-        //   So if I am at Evt[0] (CALL):
-        //     Render Evt[0].
-        //     Is it CALL? Yes.
-        //     Loop:
-        //       Render Evt[1] (push_frame). Depth becomes 1 (0->1).
-        //       Render Evt[2] (instr).
-        //       ...
-        //       Render Evt[k] (return). Depth becomes 0 (1->0).
-        //       Break.
-        //   This seems correct.
-
-        const isCall = (startEvt.type === "instruction" && startEvt.data.mnemonic === "CALL");
-
-        // Always render the current one
-        renderEvent(startEvt);
-        eventIndex++;
-
-        if (isCall) {
-            let depth = 0;
-            // Scan forward
-            while (eventIndex < simulationEvents.length) {
-                const evt = simulationEvents[eventIndex];
-                renderEvent(evt);
-                eventIndex++;
-
-                if (evt.type === "push_frame") {
-                    depth++;
-                } else if (evt.type === "return") {
-                    depth--;
-                    // If we returned to depth 0, we are done with this call
-                    if (depth <= 0) break;
+        if (simulationEvents.length === 0) {
+            (async () => {
+                const res = await fetch("/simulate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ source: srcArea.value })
+                });
+                const j = await res.json();
+                if (j.errors && j.errors.length) {
+                    alert("Runtime errors:\n" + j.errors.join("\n"));
+                    return;
                 }
-            }
+                simulationEvents = j.events || [];
+                eventIndex = 0;
+                stepOver();
+            })();
+        } else {
+            stepOver();
         }
-        updateButtons();
     });
 
-    const loadSampleBtn = document.getElementById("loadSampleBtn");
+    resetBtn.addEventListener("click", () => {
+        resetFrontendState();
+        srcArea.value = "";
+        symbolsDiv.innerText = "";
+    });
+
     loadSampleBtn.addEventListener("click", () => {
-        const sampleCode = `ORIGIN 100
+        const sample = `ORIGIN 100
 MOVE N,R1
 MOVE #NUM1,R2
 MOVE #0,R0
@@ -215,6 +332,10 @@ SUM: RESERVE 4
 N: DATAWORD 5
 NUM1: DATAWORD 2,5,7,-1,30
 END`;
-        srcArea.value = sampleCode;
+        srcArea.value = sample;
     });
+
+    // initial render
+    renderRegisterGrid();
+    renderMemoryTable();
 });
