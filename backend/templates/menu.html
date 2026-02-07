@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stack Simulator - Menu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    .menu-container {
+      max-width: 1200px;
+      width: 90%;
+      padding: 40px;
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h1 {
+      font-size: 3rem;
+      text-align: center;
+      margin-bottom: 20px;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 1.2rem;
+      color: #b8b8d1;
+      margin-bottom: 60px;
+    }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 30px;
+      margin-top: 40px;
+    }
+
+    .menu-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 40px 30px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .menu-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+
+    .menu-card:hover::before {
+      opacity: 1;
+    }
+
+    .menu-card:hover {
+      transform: translateY(-10px) scale(1.02);
+      border-color: rgba(102, 126, 234, 0.5);
+      box-shadow: 0 20px 60px rgba(102, 126, 234, 0.3);
+    }
+
+    .card-icon {
+      font-size: 4rem;
+      margin-bottom: 20px;
+      display: block;
+      filter: drop-shadow(0 0 20px currentColor);
+    }
+
+    .card-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 15px;
+      color: #fff;
+    }
+
+    .card-description {
+      font-size: 0.95rem;
+      color: #b8b8d1;
+      line-height: 1.6;
+    }
+
+    .card-1 { --accent: #667eea; }
+    .card-2 { --accent: #f093fb; }
+    .card-3 { --accent: #4facfe; }
+    .card-4 { --accent: #43e97b; }
+
+    .menu-card:nth-child(1) .card-icon { color: var(--accent); }
+    .menu-card:nth-child(2) .card-icon { color: #f093fb; }
+    .menu-card:nth-child(3) .card-icon { color: #4facfe; }
+    .menu-card:nth-child(4) .card-icon { color: #43e97b; }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+      .subtitle {
+        font-size: 1rem;
+      }
+      .menu-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="menu-container">
+    <h1>Stack Execution & Expression Evaluation Simulator</h1>
+    <p class="subtitle">Choose an execution mode to begin</p>
+
+    <div class="menu-grid">
+      <div class="menu-card card-1" onclick="location.href='/function'">
+        <span class="card-icon">📦</span>
+        <h2 class="card-title">Function Execution</h2>
+        <p class="card-description">Simulate a single function call with stack frame visualization</p>
+      </div>
+
+      <div class="menu-card card-2" onclick="location.href='/nested'">
+        <span class="card-icon">🔗</span>
+        <h2 class="card-title">Nested Function Execution</h2>
+        <p class="card-description">Visualize multiple stack frames with nested function calls</p>
+      </div>
+
+      <div class="menu-card card-3" onclick="location.href='/postfix'">
+        <span class="card-icon">➕</span>
+        <h2 class="card-title">Postfix Expression</h2>
+        <p class="card-description">Evaluate postfix expressions using stack-based algorithm</p>
+      </div>
+
+      <div class="menu-card card-4" onclick="location.href='/prefix'">
+        <span class="card-icon">✖️</span>
+        <h2 class="card-title">Prefix Expression</h2>
+        <p class="card-description">Evaluate prefix expressions with right-to-left scanning</p>
+      </div>
+
+      <div class="menu-card" onclick="location.href='/alp'" style="--accent: #ff6b6b;">
+        <span class="card-icon" style="color: #ff6b6b;">⚙️</span>
+        <h2 class="card-title">ALP Visualizer</h2>
+        <p class="card-description">Assembly-like program execution with micro-operation visualization</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

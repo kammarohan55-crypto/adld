@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Function Execution - Stack Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=2">
+  <script src="/static/script.js?v=2" defer></script>
+</head>
+
+<body>
+  <div id="container">
+    <!-- LEFT PANEL -->
+    <div id="leftPanel">
+      <!-- TOP LEFT: Control Section -->
+      <div id="controlSection">
+        <h1>Function Execution</h1>
+        <a href="/" class="back-link">← Back to Menu</a>
+
+        <div id="codeEditor">
+          <textarea id="code">def add(a,b):
+    c = a + b
+    return c
+
+def main():
+    x = add(2,3)
+
+main()</textarea>
+        </div>
+
+        <div id="buttonGroup">
+          <button id="runBtn" onclick="run()">
+            <span class="btn-icon">▶</span> Run
+          </button>
+          <button id="unwindBtn" onclick="unwind()">
+            <span class="btn-icon">⟲</span> Unwind Stack
+          </button>
+          <button id="fpUpBtn" onclick="moveFP(-1)">
+            <span class="btn-icon">↑</span> -FP
+          </button>
+          <button id="fpDownBtn" onclick="moveFP(1)">
+            <span class="btn-icon">↓</span> +FP
+          </button>
+        </div>
+      </div>
+
+      <!-- BOTTOM LEFT: Description Section -->
+      <div id="descriptionSection">
+        <h3>Stack Operations Log</h3>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: Stack Visualization -->
+    <div id="rightPanel">
+      <div id="stackVisualization">
+        <h2>Stack Memory</h2>
+        <div id="stackContainer">
+          <div id="stack"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

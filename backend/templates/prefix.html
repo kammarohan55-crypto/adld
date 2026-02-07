@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prefix Expression Evaluator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=3">
+    <script src="/static/expression_script.js?v=3" defer></script>
+</head>
+
+<body>
+    <div id="container">
+        <!-- LEFT PANEL -->
+        <div id="leftPanel">
+            <!-- TOP LEFT: Control Section -->
+            <div id="controlSection">
+                <h1>Prefix Expression Evaluator</h1>
+                <a href="/" class="back-link">← Back to Menu</a>
+
+                <div id="codeEditor">
+                    <label for="expression">Enter Prefix Expression (space-separated):</label>
+                    <input type="text" id="expression" placeholder="e.g., * + 3 4 2" value="* + 3 4 2">
+                    <p class="hint">Operators: + - * / ^</p>
+                </div>
+
+                <div id="buttonGroup">
+                    <button id="runBtn" onclick="evaluateExpression('prefix')">
+                        <span class="btn-icon">▶</span> Evaluate
+                    </button>
+                    <button id="resetBtn" onclick="resetStack()">
+                        <span class="btn-icon">⟲</span> Reset
+                    </button>
+                </div>
+            </div>
+
+            <!-- BOTTOM LEFT: Description Section -->
+            <div id="descriptionSection">
+                <h3>Evaluation Steps</h3>
+                <div id="log"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT PANEL: Stack Visualization -->
+        <div id="rightPanel">
+            <div id="stackVisualization">
+                <h2>Evaluation Stack</h2>
+                <div id="stackContainer">
+                    <div id="stack"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

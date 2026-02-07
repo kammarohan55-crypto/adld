@@ -1,0 +1,57 @@
+Verifying backend with samples...
+
+
+--- Running Sum-N (Iterative) ---
+Total events: 49
+Event types found: ['branch', 'instruction', 'mem_write', 'reg_update']
+MISSING types: {'pop', 'push_frame', 'push'}
+First event sample:
+{
+  "data": {
+    "addr": 100,
+    "mnemonic": "MOVE",
+    "operands": [
+      {
+        "mode": "label",
+        "name": "N",
+        "value": 204
+      },
+      {
+        "mode": "reg",
+        "name": "R1"
+      }
+    ],
+    "source": "MOVE N,R1"
+  },
+  "description": "Execute MOVE [{'mode': 'label', 'name': 'N', 'value': 204}, {'mode': 'reg', 'name': 'R1'}]",
+  "id": 1,
+  "instr_addr": 100,
+  "time": 1,
+  "type": "instruction"
+}
+
+
+--- Running Nested Calls (Stack Test) ---
+Total events: 35
+Event types found: ['instruction', 'mem_write', 'pop', 'push', 'push_frame', 'reg_update', 'return']
+ALL required types found!
+First event sample:
+{
+  "data": {
+    "addr": 100,
+    "mnemonic": "CALL",
+    "operands": [
+      {
+        "mode": "label",
+        "name": "SUB1",
+        "value": 200
+      }
+    ],
+    "source": "CALL SUB1"
+  },
+  "description": "Execute CALL [{'mode': 'label', 'name': 'SUB1', 'value': 200}]",
+  "id": 1,
+  "instr_addr": 100,
+  "time": 1,
+  "type": "instruction"
+}
