@@ -7,6 +7,39 @@ let steps = [];
 let popIndex = 0;
 let isUnwinding = false;
 
+function convertALPEvents(events) {
+    let steps = [];
+
+    for (let evt of events) {
+
+        if (evt.type === "push") {
+            steps.push({
+                type: "push",
+                slots: [{
+                    address: evt.data.addr,
+                    level: 1,
+                    type: evt.data.what || "value",
+                    name: String(evt.data.value)
+                }]
+            });
+        }
+
+        if (evt.type === "pop") {
+            steps.push({
+                type: "pop",
+                slot: {
+                    address: evt.data.addr,
+                    level: 1,
+                    type: evt.data.what || "value",
+                    name: String(evt.data.value || "")
+                }
+            });
+        }
+    }
+
+    return steps;
+}
+
 /**
  * Run button - Fetch and animate stack filling level by level
  */
@@ -23,13 +56,30 @@ async function run() {
 
     try {
         // Fetch execution timeline from backend
-        let res = await fetch("/run", {
+
+        let mode = document.body.dataset.mode;
+        let endpoint = (mode == "alp") ? "/simulate" : "/run";
+        let payload;
+
+        if (mode == "alp"){
+            payload = {source: document.getElementById("editor").value};
+        } else{
+            payload = {code: code.value}
+        }
+
+        let res = await fetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code: code.value })
+            body: JSON.stringify(payload)
         });
 
         steps = await res.json();
+
+        if (mode == "alp"){
+            steps = convertALPEvents(data.events || []);
+        } else{
+            steps = data;
+        }
 
         // Animate stack filling level by level
         await animateStackFilling();
@@ -215,7 +265,7 @@ async function unwindNext() {
 
     if (step.type === "pop") {
         // Since we're using column-reverse, the first child is the topmost (last added) element
-        let topRow = stack.firstChild;
+        let topRow = stack.lastChild;
 
         if (topRow) {
             // Animate out
@@ -293,3 +343,38 @@ function addLogEntry(message, type = "info") {
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+window.runStackFromEvents = async function(events) {
+    stack.innerHTML = "";
+    log.innerHTML = "";
+
+    steps = [];
+
+    for (let e of events) {
+        if (e.type === "push") {
+            steps.push({
+                type: "push",
+                slots: [{
+                    level: 1,
+                    type: e.data.what,
+                    name: e.data.what,
+                    address: e.data.addr
+                }]
+            });
+        }
+
+        if (e.type === "pop") {
+            steps.push({
+                type: "pop",
+                slot: {
+                    type: e.data.what,
+                    name: e.data.what,
+                    address: e.data.addr,
+                    level: 1
+                }
+            });
+        }
+    }
+
+    await animateStackFilling();
+};

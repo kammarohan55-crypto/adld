@@ -147,3 +147,85 @@ def pop_frame(state: Dict[str,Any], emit: EventEmitFn = None) -> int:
     _emit_or_noop(emit, "return", f"return to {ret_addr}", {"to": ret_addr})
     return int(ret_addr)
 
+# ============================================================
+# Legacy stack visualizer classes (used by function/nested/prefix/postfix pages)
+# ============================================================
+
+class StackFrame:
+    def __init__(self, func, params, start_sp, frame_index):
+        self.func = func
+        self.slots = []
+        addr = start_sp
+
+        # LEVEL 1 — parameters
+        for k in params:
+            self.slots.append({
+                "type": "param",
+                "name": k,
+                "level": 1,
+                "address": addr
+            })
+            addr -= 4
+
+        # LEVEL 2 — return + saved FP
+        self.slots.append({
+            "type": "return_addr",
+            "name": "RET",
+            "level": 2,
+            "address": addr
+        })
+        addr -= 4
+
+        self.slots.append({
+            "type": "saved_fp",
+            "name": "OLD_FP",
+            "level": 2,
+            "address": addr
+        })
+        addr -= 4
+
+        # LEVEL 3 — registers + local
+        base_reg = frame_index * 2
+        
+        self.slots.append({
+            "type": "saved_reg",
+            "name": f"R{base_reg + 1}",
+            "level": 3,
+            "address": addr
+        })
+        addr -= 4
+
+        self.slots.append({
+            "type": "saved_reg",
+            "name": f"R{base_reg + 2}",
+            "level": 3,
+            "address": addr
+        })
+        addr -= 4
+
+        self.slots.append({
+            "type": "local",
+            "name": "temp",
+            "level": 3,
+            "address": addr
+        })
+
+
+class VirtualStack:
+    def __init__(self):
+        self.sp = 1000
+        self.frames = []
+
+    def push_frame(self, func, params):
+        frame_index = len(self.frames)
+        frame = StackFrame(func, params, self.sp, frame_index)
+        self.frames.append(frame)
+        self.sp = frame.slots[-1]["address"] - 4
+        return frame
+
+    def pop_frame(self):
+        if not self.frames:
+            return None
+        frame = self.frames.pop()
+        self.sp = frame.slots[0]["address"] + 4
+        return frame

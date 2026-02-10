@@ -11,6 +11,8 @@
 // Notes:
 // - The script updates #registerGrid and #memoryBody (existing elements) and uses event log #eventLog.
 // - Simple stack view is implemented from push/pop events (stackList). SP/FP shown in register grid.
+
+console.log("alp_ui.js LOADED");
 document.addEventListener("DOMContentLoaded", function () {
     const srcArea = document.getElementById("editor");
     const assembleBtn = document.getElementById("assembleBtn");
@@ -157,7 +159,10 @@ document.addEventListener("DOMContentLoaded", function () {
             // a return: frames unwinding; handled by pop events as they are emitted
         }
         // Render event row too
-        renderEvent(evt);
+        // renderEvent(evt);
+        const row = document.createElement("div");
+        row.textContent = JSON.stringify(evt);
+        eventsDiv.appendChild(row)
     }
 
     function renderStackSnapshot() {
@@ -228,41 +233,96 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         const j = await res.json();
         symbolsDiv.innerText = JSON.stringify(j.symbols || {}, null, 2);
-        if (j.errors && j.errors.length) alert("Assemble errors:\n" + j.errors.join("\n"));
-        // Reset frontend state on a successful assemble to avoid stale events
-        resetFrontendState();
-    });
-
-    runBtn.addEventListener("click", async () => {
-        eventsDiv.innerHTML = "";
-        resetFrontendState();
-        const source = srcArea.value;
-        const res = await fetch("/simulate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source })
-        });
-        const j = await res.json();
-        if (j.errors && j.errors.length) {
-            alert("Runtime errors:\n" + j.errors.join("\n"));
+        if (j.errors && j.errors.length){ 
+            alert("Assemble errors:\n" + j.errors.join("\n"));
             return;
         }
-        simulationEvents = j.events || [];
-        // Initialize registers from final_state snapshot if provided (helps showing initial register values)
-        if (j.final_state_meta && j.final_state_meta.registers) {
-            registers = Object.assign({}, j.final_state_meta.registers);
+        // Reset frontend state on a successful assemble to avoid stale events
+        resetFrontendState();
+        runBtn.disabled = false;
+        stepBtn.disabled = false;
+        stepOverBtn.disabled = false;
+    });
+
+    window.addEventListener("load", function (){
+        runBtn.addEventListener("click", async () => {
+            const source = srcArea.value;
+            const res = await fetch("/simulate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source })
+            });
+            const j = await res.json();
+            if (j.errors && j.errors.length) {
+                alert("Runtime errors:\n" + j.errors.join("\n"));
+                return;
+            }
+            // store events
+            simulationEvents = j.events || [];
+            console.log("EVENT COUNT:", simulationEvents.length);
+
+            eventsDiv.innerHTML = "";
+
+            for (let e of simulationEvents) {
+                const d = document.createElement("div");
+                d.textContent = e.type + " → " + e.description;
+                eventsDiv.appendChild(d);
+            }
+
+            steps = [];
+
+            for (let evt of simulationEvents){
+                if (evt.type === "push"){
+                    steps.push({
+                        type: "push",
+                        slots: [{
+                            address: evt.data.addr,
+                            level: 1,
+                            type: evt.data.what || "value",
+                            name: String(evt.data.value)
+                        }]
+                    });
+                }
+
+                if (evt.type === "pop"){
+                    steps.push({
+                        type: "pop",
+                        slots: [{
+                            address: evt.data.addr,
+                            level: 1,
+                            type: evt.data.what || "value",
+                            name: String(evt.data.value || "")
+                        }]
+                    });
+                }
+            }
+
+            stackList.innerHTML = "";
+            log.innerHTML = "";
+
+            await animateStackFilling();
+            initializeFramePointer();
+
+            // reset UI cleanly
+            eventsDiv.innerHTML = "";
+            stackList = [];
+            memoryMap = {};
+            registers = {};
             renderRegisterGrid();
-        }
-        // Optionally, we can play all events at once (here we render them sequentially quickly)
-        // For now, we render them all with a small delay to simulate execution; if you prefer immediate dump, remove delay.
-        let i = 0;
-        const pace = 20; // ms per event (fast). Increase for slower playback.
-        function playNext() {
-            if (i >= simulationEvents.length) return;
-            handleEvent(simulationEvents[i++]);
-            setTimeout(playNext, pace);
-        }
-        playNext();
+            renderMemoryTable();
+
+            // play events visually
+            let i = 0;
+            const pace = 150;
+
+            function playNext() {
+                if (i >= simulationEvents.length) return;
+                handleEvent(simulationEvents[i++]);
+                setTimeout(playNext, pace);
+            }
+
+            playNext();
+        });
     });
 
     stepBtn.addEventListener("click", () => {
