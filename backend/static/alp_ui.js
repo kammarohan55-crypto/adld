@@ -377,21 +377,18 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     loadSampleBtn.addEventListener("click", () => {
-        const sample = `ORIGIN 100
-MOVE N,R1
-MOVE #NUM1,R2
-MOVE #0,R0
-LOOP:
- ADD (R2),R0
- ADD #4,R2
- DECREMENT R1
- BRANCH >0,LOOP
-MOVE R0,SUM
-ORIGIN 200
-SUM: RESERVE 4
-N: DATAWORD 5
-NUM1: DATAWORD 2,5,7,-1,30
-END`;
+        const sample = `
+        ORIGIN 100
+        MOVE #2,R1        
+        MOVE #3,R2        
+        MOVE #0,R0        
+        ADD R1,R0         
+        ADD R2,R0         
+        MOVE R0,X         
+        ORIGIN 200
+        X: RESERVE 4      
+        END
+        `;
         srcArea.value = sample;
     });
 
