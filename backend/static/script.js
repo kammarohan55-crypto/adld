@@ -51,20 +51,18 @@ async function run() {
     popIndex = 0;
     isUnwinding = false;
 
-    // Add initial log entry
     addLogEntry("🚀 Starting execution...", "info");
 
     try {
-        // Fetch execution timeline from backend
+        let mode = document.body.dataset.mode || "default";
 
-        let mode = document.body.dataset.mode;
-        let endpoint = (mode == "alp") ? "/simulate" : "/run";
+        let endpoint = (mode === "alp") ? "/simulate" : "/run";
+
         let payload;
-
-        if (mode == "alp"){
-            payload = {source: document.getElementById("editor").value};
-        } else{
-            payload = {code: code.value}
+        if (mode === "alp") {
+            payload = { source: document.getElementById("editor").value };
+        } else {
+            payload = { code: code.value };
         }
 
         let res = await fetch(endpoint, {
@@ -73,21 +71,21 @@ async function run() {
             body: JSON.stringify(payload)
         });
 
-        steps = await res.json();
+        let json = await res.json();
 
-        if (mode == "alp"){
-            steps = convertALPEvents(data.events || []);
-        } else{
-            steps = data;
+        // IMPORTANT: always assign to steps
+        if (mode === "alp") {
+            steps = convertALPEvents(json.events || []);
+        } else {
+            steps = json;
         }
 
-        // Animate stack filling level by level
+        // Animate
         await animateStackFilling();
-
-        // Initialize FP at the saved_fp (old frame pointer) position
         initializeFramePointer();
 
         addLogEntry("✓ Stack constructed successfully!", "success");
+
     } catch (error) {
         addLogEntry("✗ Error: " + error.message, "error");
     }
